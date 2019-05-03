@@ -9,6 +9,11 @@ import java.util.List;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import javax.persistence.EntityManager;
+import javax.persistence.EntityManagerFactory;
+import javax.persistence.Persistence;
+import javax.persistence.TypedQuery;
+
 import org.apache.http.HttpHost;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
@@ -18,10 +23,59 @@ import org.elasticsearch.client.RestClient;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import ua.selftaught.entity.HartTrophyWinners;
+
 public class Main {
+	
 	private static final HttpHost HOST = new HttpHost("localhost", 9200);
+	private static final EntityManagerFactory EMF = Persistence.createEntityManagerFactory("ua.selftaught.hibernate.jpa");
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 	
 	public static void main(String[] args) {
+		
+		EntityManager em = EMF.createEntityManager();
+		
+		TypedQuery<HartTrophyWinners> query = em.createQuery("Select ht from HartTrophyWinners ht", HartTrophyWinners.class);
+		List<HartTrophyWinners> htw = query.getResultList();
+		em.close();
+		
+		saveAll("hockey", htw);
+		
+		
+	}
+
+	private static String buildIndexPath(String index, Long id) {
+		StringBuilder sb = new StringBuilder(index);
+		
+		return sb.append("/")
+			.append("_doc")
+			.append("/")
+			.append(id)
+			.toString();
+	}
+	
+	private static void saveAll(String index, List<HartTrophyWinners> htw) {
+		
+		try(RestClient client = RestClient.builder(HOST).build()) {
+			htw.stream()
+				.forEach(ht -> {
+					try {
+						
+						Request rqst = new Request("PUT", buildIndexPath(index, ht.getId()));
+						rqst.setJsonEntity(MAPPER.writeValueAsString(ht));
+						client.performRequest(rqst);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		
+	}
+
+	private static void elasticsearch() {
 		ResponseListener listener = new RespListener();
 		
 		try (RestClient client = RestClient.builder(HOST).build()) {
@@ -47,7 +101,6 @@ public class Main {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-		
 	}
 
 }
